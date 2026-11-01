@@ -307,7 +307,7 @@ if __name__ == "__main__":
                         config['beam_size'], device, prefix_fn=prefix_fn)
         print('Test Dataset:', r); print('Test Dataset:', n)
         logging.info(f'Test Dataset: {r}'); logging.info(f'Test Dataset: {n}')
-        return
+        raise SystemExit
 
     for epoch in range(config['num_epochs']):
         logging.info(f"Epoch {epoch + 1}/{config['num_epochs']}")
