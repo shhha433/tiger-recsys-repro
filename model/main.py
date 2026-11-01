@@ -93,6 +93,29 @@ class TIGER(nn.Module):
             num_return_sequences=num_beams,
             **kwargs
         )
+#添加前缀树约束解码
+def build_prefix_fn(code_path, codebook_size=256):
+    """从所有物品的 SID 建前缀树，返回 HuggingFace 的 prefix_allowed_tokens_fn。"""
+    data = np.load(code_path, allow_pickle=True)
+    trie = {}
+    for code in data:
+        # 和 dataset.py 的 item2code 保持同一套偏移
+        offsets = [int(c) + i * codebook_size + 1 for i, c in enumerate(code)]
+        node = trie
+        for tok in offsets:
+            node = node.setdefault(tok, {})
+        node["END"] = True
+
+    def fn(batch_id, input_ids):
+        node = trie
+        for tok in input_ids.tolist()[1:]:      # 跳过 decoder_start_token
+            node = node.get(tok)
+            if node is None:
+                return []                        # 这条 beam 走死了
+        return [k for k in node.keys() if k != "END"]
+
+    return fn
+
 
 def calculate_pos_index(preds, labels, maxk=20):
     """Calculate the position index of the ground truth items.
@@ -149,7 +172,8 @@ def train(model, train_loader, optimizer, device):
         
     return total_loss / len(train_loader)
 
-def evaluate(model, eval_loader, topk_list, beam_size, device):
+
+def evaluate(model, eval_loader, topk_list, beam_size, device, prefix_fn=None):
     model.eval()
     recalls = {'Recall@' + str(k): [] for k in topk_list}
     ndcgs = {'NDCG@' + str(k): [] for k in topk_list}
@@ -160,7 +184,7 @@ def evaluate(model, eval_loader, topk_list, beam_size, device):
             attention_mask = batch['attention_mask'].to(device)
             labels = batch['target'].to(device)
 
-            preds = model.generate(input_ids=input_ids, attention_mask=attention_mask, num_beams=beam_size)
+            preds = model.generate(input_ids=input_ids, attention_mask=attention_mask, num_beams=beam_size,prefix_allowed_tokens_fn=prefix_fn)
             preds = preds[:, 1:]  # Exclude the start token
             preds = preds.reshape(input_ids.shape[0], beam_size, -1)  # Reshape to (batch_size, beam_size, seq_len)
             pos_index = calculate_pos_index(preds, labels, maxk=beam_size)
@@ -211,6 +235,9 @@ if __name__ == "__main__":
     parser.add_argument('--early_stop', type=int, default=10, help='Early stopping patience')
     parser.add_argument('--topk_list', type=list, default=[5,10,20], help='List of top-k values for evaluation metrics')
     parser.add_argument('--beam_size', type=int, default=30, help='Beam size for generation')
+    parser.add_argument('--eval_only', action='store_true')
+    parser.add_argument('--load_ckpt', type=str, default='./ckpt/tiger.pth')
+    parser.add_argument('--no_constraint', action='store_true')
     config = vars(parser.parse_args())
     # Set up logging
     logging.basicConfig(
@@ -271,19 +298,29 @@ if __name__ == "__main__":
     model.to(device)
     best_ndcg = 0.0
     early_stop_counter = 0
+    prefix_fn = None if config.get('no_constraint') else build_prefix_fn(config['code_path'])
     
+    if config.get('eval_only'):
+        model.load_state_dict(torch.load(config['load_ckpt'], map_location=device))
+        model.to(device)
+        r, n = evaluate(model, test_dataloader, config['topk_list'],
+                        config['beam_size'], device, prefix_fn=prefix_fn)
+        print('Test Dataset:', r); print('Test Dataset:', n)
+        logging.info(f'Test Dataset: {r}'); logging.info(f'Test Dataset: {n}')
+        return
+
     for epoch in range(config['num_epochs']):
         logging.info(f"Epoch {epoch + 1}/{config['num_epochs']}")
         train_loss = train(model, train_dataloader, optimizer, device)
         logging.info(f"Training loss: {train_loss}")
         # Evaluate the model
-        avg_recalls, avg_ndcgs = evaluate(model, validation_dataloader, config['topk_list'], config['beam_size'], device)
+        avg_recalls, avg_ndcgs = evaluate(model, validation_dataloader, config['topk_list'], config['beam_size'], device, prefix_fn=prefix_fn)
         logging.info(f"Validation Dataset: {avg_recalls}")
         logging.info(f"Validation Dataset: {avg_ndcgs}")
         if avg_ndcgs['NDCG@20'] > best_ndcg:
             best_ndcg = avg_ndcgs['NDCG@20']
             early_stop_counter = 0  # Reset early stop counter
-            test_avg_recalls, test_avg_ndcgs = evaluate(model, test_dataloader, config['topk_list'], config['beam_size'], device)
+            test_avg_recalls, test_avg_ndcgs = evaluate(model, test_dataloader, config['topk_list'], config['beam_size'], device, prefix_fn=prefix_fn)
             logging.info(f"Best NDCG@20: {best_ndcg}")
             logging.info(f"Test Dataset: {test_avg_recalls}")
             logging.info(f"Test Dataset: {test_avg_ndcgs}")
