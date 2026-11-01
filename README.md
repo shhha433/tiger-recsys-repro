@@ -1,4 +1,4 @@
-# TIGER 生成式推荐复现（含两处修复）
+# TIGER 生成式推荐复现
 
 基于 [XiaoLongtaoo/TIGER](https://github.com/XiaoLongtaoo/TIGER)（MIT License）的复现。
 在原实现基础上**补齐了论文的前缀树约束解码**，并**定位、修复了 RQ-VAE 的码本塌缩问题**。
