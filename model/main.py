@@ -235,9 +235,6 @@ if __name__ == "__main__":
     parser.add_argument('--early_stop', type=int, default=10, help='Early stopping patience')
     parser.add_argument('--topk_list', type=list, default=[5,10,20], help='List of top-k values for evaluation metrics')
     parser.add_argument('--beam_size', type=int, default=30, help='Beam size for generation')
-    parser.add_argument('--eval_only', action='store_true')
-    parser.add_argument('--load_ckpt', type=str, default='./ckpt/tiger.pth')
-    parser.add_argument('--no_constraint', action='store_true')
     config = vars(parser.parse_args())
     # Set up logging
     logging.basicConfig(
@@ -298,17 +295,8 @@ if __name__ == "__main__":
     model.to(device)
     best_ndcg = 0.0
     early_stop_counter = 0
-    prefix_fn = None if config.get('no_constraint') else build_prefix_fn(config['code_path'])
+    prefix_fn = build_prefix_fn(config['code_path'])
     
-    if config.get('eval_only'):
-        model.load_state_dict(torch.load(config['load_ckpt'], map_location=device))
-        model.to(device)
-        r, n = evaluate(model, test_dataloader, config['topk_list'],
-                        config['beam_size'], device, prefix_fn=prefix_fn)
-        print('Test Dataset:', r); print('Test Dataset:', n)
-        logging.info(f'Test Dataset: {r}'); logging.info(f'Test Dataset: {n}')
-        raise SystemExit
-
     for epoch in range(config['num_epochs']):
         logging.info(f"Epoch {epoch + 1}/{config['num_epochs']}")
         train_loss = train(model, train_dataloader, optimizer, device)
