@@ -1,5 +1,10 @@
 *.pth
-data/
+data/*
+!data/process.ipynb
+!data/Beauty/
+data/Beauty/*
+!data/Beauty/Beauty_t5_rqvae.npy
+!data/Beauty/OLD_sid_collapsed.npy
 ckpt/
 __pycache__/
 .DS_Store

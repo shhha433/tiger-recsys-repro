@@ -233,8 +233,11 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=2025, help='Random seed for reproducibility')
     parser.add_argument('--save_path', type=str, default='./ckpt/tiger.pth', help='Path to save the trained model')
     parser.add_argument('--early_stop', type=int, default=10, help='Early stopping patience')
-    parser.add_argument('--topk_list', type=list, default=[5,10,20], help='List of top-k values for evaluation metrics')
+    parser.add_argument('--topk_list', type=int, nargs='+', default=[5, 10, 20], help='List of top-k values for evaluation metrics')
     parser.add_argument('--beam_size', type=int, default=30, help='Beam size for generation')
+    parser.add_argument('--eval_only', action='store_true', help='Only evaluate a saved checkpoint')
+    parser.add_argument('--load_ckpt', type=str, default='./ckpt/tiger.pth', help='Checkpoint used by --eval_only')
+    parser.add_argument('--no_constraint', action='store_true', help='Disable prefix-tree constrained decoding')
     config = vars(parser.parse_args())
     # Set up logging
     logging.basicConfig(
@@ -295,7 +298,24 @@ if __name__ == "__main__":
     model.to(device)
     best_ndcg = 0.0
     early_stop_counter = 0
-    prefix_fn = build_prefix_fn(config['code_path'])
+    prefix_fn = None if config['no_constraint'] else build_prefix_fn(config['code_path'])
+
+    if config['eval_only']:
+        model.load_state_dict(torch.load(config['load_ckpt'], map_location=device))
+        model.to(device)
+        recalls, ndcgs = evaluate(
+            model,
+            test_dataloader,
+            config['topk_list'],
+            config['beam_size'],
+            device,
+            prefix_fn=prefix_fn,
+        )
+        print('Test Dataset:', recalls)
+        print('Test Dataset:', ndcgs)
+        logging.info(f'Test Dataset: {recalls}')
+        logging.info(f'Test Dataset: {ndcgs}')
+        raise SystemExit
     
     for epoch in range(config['num_epochs']):
         logging.info(f"Epoch {epoch + 1}/{config['num_epochs']}")

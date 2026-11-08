@@ -28,13 +28,11 @@
 ## 二、环境
 
 ```bash
-pip install "pandas==2.1.4" "numpy<2" "pyarrow==15.0.2" \
-            polars tqdm "transformers==4.40.0" \
-            sentence-transformers huggingface_hub
+pip install -r requirements.txt
 ```
 
-> 不要直接用仓库自带的 `requirements.txt`——它锁的是 `python==3.7.16` / `torch==1.10.1`，
-> 与 PyTorch 2.x 镜像冲突。
+`requirements.txt` 记录的是本次在 PyTorch 2.x 环境中验证过的宽松版本。
+上游原始依赖锁定了较老的 Python 与 PyTorch，不适合直接用于当前云镜像。
 
 ---
 
@@ -55,8 +53,18 @@ python generate_code.py
 
 # 4. 训练 TIGER
 cd ../model
-python main.py --num_epochs 200 --infer_size 32
+python main.py --num_epochs 200 --infer_size 32 --beam_size 30
+
+# 只评估已有 checkpoint（可关闭约束解码做消融）
+python main.py --eval_only --load_ckpt ./ckpt/tiger.pth \
+    --infer_size 32 --beam_size 30
+python main.py --eval_only --no_constraint --load_ckpt ./ckpt/tiger.pth \
+    --infer_size 32 --beam_size 30
 ```
+
+仓库已经包含完整的 RQ-VAE 支撑代码（`rqvae/models/`、`trainer.py`、
+`datasets.py`、`utils.py`）和 `data/process.ipynb`。Amazon 原始数据、
+Sentence-T5 权重和大 checkpoint 因体积原因不提交，需要按步骤下载或生成。
 
 ---
 
@@ -213,9 +221,19 @@ rqvae/
   main.py               RQ-VAE 训练
   generate_code.py      生成 SID
   rqvae_3000.log        RQ-VAE 训练日志（碰撞率证据）
+  datasets.py           item embedding Dataset
+  trainer.py            训练、碰撞率评估、checkpoint 管理
+  utils.py              目录和时间戳工具
+  models/
+    rqvae.py            Encoder + 残差量化 + Decoder
+    rq.py               多层 residual vector quantizer
+    vq.py               vector quantizer、码字索引与量化损失
+    layers.py           MLP、KMeans 初始化和 Sinkhorn
 data/Beauty/
   Beauty_t5_rqvae.npy   新 SID（第 1 层 36 码字）
   OLD_sid_collapsed.npy 旧 SID（第 1 层 9 码字）
+data/process.ipynb      Beauty 数据清洗、映射和 Sentence-T5 编码
+requirements.txt        PyTorch 2.x 环境下使用的依赖
 ```
 
 ## 十一、许可
