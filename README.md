@@ -5,8 +5,6 @@
 
 数据集：Amazon Beauty（2014 版），12,095 个物品。
 
-详细代码关系与阅读顺序见 [`docs/PROJECT_GUIDE.md`](docs/PROJECT_GUIDE.md)。
-
 ---
 
 ## 一、这条链路在做什么
